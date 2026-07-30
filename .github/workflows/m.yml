@@ -1,0 +1,111 @@
+# ONE-SHOT migration, run from the PUBLIC runner (this repo has unlimited
+# GitHub-hosted minutes). It clones each content repo with its write token,
+# flattens history/<provider>/<fuel>/... up to history/<fuel>/..., and pushes
+# back to main. Run once from the Actions tab (Run workflow), confirm both
+# jobs are green, then DELETE this file from this repo.
+#
+# No provider names appear here: each job auto-detects the nested provider
+# directory under history/ (the one that itself contains petrol/ or diesel/).
+name: m
+
+on:
+  workflow_dispatch:
+
+jobs:
+  a:
+    runs-on: ubuntu-latest
+    steps:
+      - name: r
+        shell: bash
+        env:
+          REPO: ${{ secrets.I_REPO }}
+          TOKEN: ${{ secrets.I_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config --global user.name "bot"
+          git config --global user.email "bot@users.noreply.github.com"
+          REMOTE="${REMOTE_OVERRIDE:-https://x-access-token:${TOKEN}@github.com/${REPO}.git}"
+          git clone "$REMOTE" work
+          cd work
+          git checkout main
+          if [ ! -d history ]; then echo "no history dir; nothing to do."; exit 0; fi
+          shopt -s nullglob
+          for provdir in history/*/; do
+            prov="${provdir%/}"
+            base="$(basename "$prov")"
+            [ "$base" = "petrol" ] && continue
+            [ "$base" = "diesel" ] && continue
+            if [ ! -d "$prov/petrol" ] && [ ! -d "$prov/diesel" ]; then continue; fi
+            echo "flattening $prov ..."
+            for fuel in petrol diesel; do
+              src="$prov/$fuel"
+              [ -d "$src" ] || continue
+              if [ -d "history/$fuel" ]; then
+                while IFS= read -r -d '' f; do
+                  rel="${f#$prov/}"
+                  dst="history/$rel"
+                  mkdir -p "$(dirname "$dst")"
+                  git mv -f "$f" "$dst"
+                done < <(find "$src" -type f -print0)
+              else
+                git mv "$src" "history/$fuel"
+              fi
+            done
+            find "$prov" -type d -empty -delete 2>/dev/null || true
+            rmdir "$prov" 2>/dev/null || true
+          done
+          if git diff --cached --quiet && git diff --quiet; then
+            echo "nothing to commit -- already flat."
+            exit 0
+          fi
+          git commit -m "history: flatten provider dir into history/"
+          git push origin HEAD:main
+
+  b:
+    runs-on: ubuntu-latest
+    steps:
+      - name: r
+        shell: bash
+        env:
+          REPO: ${{ secrets.H_REPO }}
+          TOKEN: ${{ secrets.H_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config --global user.name "bot"
+          git config --global user.email "bot@users.noreply.github.com"
+          REMOTE="${REMOTE_OVERRIDE:-https://x-access-token:${TOKEN}@github.com/${REPO}.git}"
+          git clone "$REMOTE" work
+          cd work
+          git checkout main
+          if [ ! -d history ]; then echo "no history dir; nothing to do."; exit 0; fi
+          shopt -s nullglob
+          for provdir in history/*/; do
+            prov="${provdir%/}"
+            base="$(basename "$prov")"
+            [ "$base" = "petrol" ] && continue
+            [ "$base" = "diesel" ] && continue
+            if [ ! -d "$prov/petrol" ] && [ ! -d "$prov/diesel" ]; then continue; fi
+            echo "flattening $prov ..."
+            for fuel in petrol diesel; do
+              src="$prov/$fuel"
+              [ -d "$src" ] || continue
+              if [ -d "history/$fuel" ]; then
+                while IFS= read -r -d '' f; do
+                  rel="${f#$prov/}"
+                  dst="history/$rel"
+                  mkdir -p "$(dirname "$dst")"
+                  git mv -f "$f" "$dst"
+                done < <(find "$src" -type f -print0)
+              else
+                git mv "$src" "history/$fuel"
+              fi
+            done
+            find "$prov" -type d -empty -delete 2>/dev/null || true
+            rmdir "$prov" 2>/dev/null || true
+          done
+          if git diff --cached --quiet && git diff --quiet; then
+            echo "nothing to commit -- already flat."
+            exit 0
+          fi
+          git commit -m "history: flatten provider dir into history/"
+          git push origin HEAD:main
