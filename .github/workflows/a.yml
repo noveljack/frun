@@ -1,0 +1,78 @@
+name: a
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [a]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a
+  cancel-in-progress: false
+
+jobs:
+  a:
+    name: a
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+    steps:
+      - name: a
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.CONTENT_REPO }}
+          token: ${{ secrets.CONTENT_TOKEN }}
+          ref: main
+
+      - name: b
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: c
+        shell: bash
+        run: python ci.py deps
+
+      - name: d
+        shell: bash
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_TOTAL: "16"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python ci.py shard "$SHARD_INDEX"
+
+  b:
+    name: b
+    needs: a
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: a
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.CONTENT_REPO }}
+          token: ${{ secrets.CONTENT_TOKEN }}
+          ref: main
+
+      - name: b
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: c
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python ci.py finalize
