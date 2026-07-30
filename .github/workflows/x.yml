@@ -1,0 +1,119 @@
+# One-shot cleanup, run once from the public repo then deleted. Each content repo
+# still carries the OTHER provider's leftover config/groups/data from before it
+# was split into its own repo. Nothing reads those files (every script is pinned
+# to the repo's own provider), so this is housekeeping only.
+#
+# Generic + provider-agnostic: the repo's own provider is DETECTED from its own
+# committed code (the PROVIDER constant in aggregate_history.py), never named
+# here. Anything under data/, config/ or groups/ that belongs to a different
+# provider is git-removed; config/aliases.json and the repo's own files are kept.
+# Runs on the public runner so it costs no private Actions minutes.
+
+name: x
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  a:
+    name: a
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      REPO: ${{ secrets.I_REPO }}
+      TOKEN: ${{ secrets.I_TOKEN }}
+    steps:
+      - name: a
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          git config --global user.name "bot"
+          git config --global user.email "bot@users.noreply.github.com"
+          REMOTE="${REMOTE_OVERRIDE:-https://x-access-token:${TOKEN}@github.com/${REPO}.git}"
+          git clone -q "$REMOTE" work
+          cd work
+          git checkout -q main
+          SELF="$(grep -oE 'PROVIDER[[:space:]]*=[[:space:]]*"[a-z0-9]+"' aggregate_history.py | head -1 | grep -oE '"[a-z0-9]+"' | tr -d '\"')"
+          if [ -z "$SELF" ]; then echo "could not detect provider; aborting"; exit 1; fi
+          echo "detected own provider ok"
+          changed=0
+          if [ -d data ]; then
+            for d in data/*/; do
+              p="$(basename "$d")"
+              [ "$p" = "$SELF" ] && continue
+              git rm -r -q "data/$p" && changed=1
+            done
+          fi
+          if [ -d config ]; then
+            for f in config/*.json; do
+              b="$(basename "$f" .json)"
+              [ "$b" = "aliases" ] && continue
+              [ "$b" = "$SELF" ] && continue
+              git rm -q "$f" && changed=1
+            done
+          fi
+          if [ -d groups ]; then
+            for f in groups/*.json; do
+              b="$(basename "$f" .json)"
+              [ "$b" = "$SELF" ] && continue
+              git rm -q "$f" && changed=1
+            done
+          fi
+          if [ "$changed" = "0" ]; then echo "nothing to remove"; exit 0; fi
+          git commit -q -m "cleanup: drop cross-provider leftovers"
+          git push -q origin HEAD:main
+          echo "cleanup pushed"
+
+  b:
+    name: b
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      REPO: ${{ secrets.H_REPO }}
+      TOKEN: ${{ secrets.H_TOKEN }}
+    steps:
+      - name: a
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          git config --global user.name "bot"
+          git config --global user.email "bot@users.noreply.github.com"
+          REMOTE="${REMOTE_OVERRIDE:-https://x-access-token:${TOKEN}@github.com/${REPO}.git}"
+          git clone -q "$REMOTE" work
+          cd work
+          git checkout -q main
+          SELF="$(grep -oE 'PROVIDER[[:space:]]*=[[:space:]]*"[a-z0-9]+"' aggregate_history.py | head -1 | grep -oE '"[a-z0-9]+"' | tr -d '\"')"
+          if [ -z "$SELF" ]; then echo "could not detect provider; aborting"; exit 1; fi
+          echo "detected own provider ok"
+          changed=0
+          if [ -d data ]; then
+            for d in data/*/; do
+              p="$(basename "$d")"
+              [ "$p" = "$SELF" ] && continue
+              git rm -r -q "data/$p" && changed=1
+            done
+          fi
+          if [ -d config ]; then
+            for f in config/*.json; do
+              b="$(basename "$f" .json)"
+              [ "$b" = "aliases" ] && continue
+              [ "$b" = "$SELF" ] && continue
+              git rm -q "$f" && changed=1
+            done
+          fi
+          if [ -d groups ]; then
+            for f in groups/*.json; do
+              b="$(basename "$f" .json)"
+              [ "$b" = "$SELF" ] && continue
+              git rm -q "$f" && changed=1
+            done
+          fi
+          if [ "$changed" = "0" ]; then echo "nothing to remove"; exit 0; fi
+          git commit -q -m "cleanup: drop cross-provider leftovers"
+          git push -q origin HEAD:main
+          echo "cleanup pushed"

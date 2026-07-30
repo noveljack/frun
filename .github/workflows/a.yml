@@ -1,3 +1,9 @@
+# Daily driver for the two private content repos, run here on the public repo so
+# no private Actions minutes are spent. Jobs a/b scrape (8 shards each) and
+# publish per-group files; jobs c/d merge + append history + summarise. Generic
+# names only; nothing here reveals what the content repos are. No schedule: an
+# external scheduler (cronjobs.org) fires repository_dispatch {"event_type":"a"}.
+
 name: a
 
 on:
@@ -20,16 +26,16 @@ jobs:
 
     strategy:
       fail-fast: false
-      max-parallel: 16
+      max-parallel: 8
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
 
     steps:
       - name: a
         uses: actions/checkout@v4
         with:
-          repository: ${{ secrets.CONTENT_REPO }}
-          token: ${{ secrets.CONTENT_TOKEN }}
+          repository: ${{ secrets.I_REPO }}
+          token: ${{ secrets.I_TOKEN }}
           ref: main
 
       - name: b
@@ -45,13 +51,50 @@ jobs:
         shell: bash
         env:
           SHARD_INDEX: ${{ matrix.shard }}
-          SHARD_TOTAL: "16"
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SHARD_TOTAL: "8"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TG_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TG_CHAT }}
         run: python ci.py shard "$SHARD_INDEX"
 
   b:
     name: b
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+
+    steps:
+      - name: a
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.H_REPO }}
+          token: ${{ secrets.H_TOKEN }}
+          ref: main
+
+      - name: b
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: c
+        shell: bash
+        run: python ci.py deps
+
+      - name: d
+        shell: bash
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          SHARD_TOTAL: "8"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TG_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TG_CHAT }}
+        run: python ci.py shard "$SHARD_INDEX"
+
+  c:
+    name: c
     needs: a
     if: always()
     runs-on: ubuntu-latest
@@ -61,8 +104,8 @@ jobs:
       - name: a
         uses: actions/checkout@v4
         with:
-          repository: ${{ secrets.CONTENT_REPO }}
-          token: ${{ secrets.CONTENT_TOKEN }}
+          repository: ${{ secrets.I_REPO }}
+          token: ${{ secrets.I_TOKEN }}
           ref: main
 
       - name: b
@@ -73,6 +116,33 @@ jobs:
       - name: c
         shell: bash
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TG_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TG_CHAT }}
+        run: python ci.py finalize
+
+  d:
+    name: d
+    needs: b
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: a
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.H_REPO }}
+          token: ${{ secrets.H_TOKEN }}
+          ref: main
+
+      - name: b
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: c
+        shell: bash
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TG_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TG_CHAT }}
         run: python ci.py finalize
